@@ -1,0 +1,297 @@
+name: Vega Linux AArch64 Userspace
+
+on:
+  workflow_dispatch:
+
+env:
+  PREFIX: /opt/vega
+  JOBS: 4
+
+jobs:
+  build-userspace:
+    runs-on: ubuntu-24.04-arm
+
+    steps:
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            autoconf \
+            automake \
+            bison \
+            flex \
+            gettext \
+            libtool \
+            pkg-config \
+            libssl-dev \
+            libcap-dev \
+            libpam0g-dev \
+            libpcre2-dev \
+            libselinux1-dev \
+            libmount-dev \
+            libblkid-dev \
+            libuuid1 \
+            uuid-dev \
+            zlib1g-dev \
+            liblzma-dev \
+            libzstd-dev \
+            libffi-dev \
+            git \
+            curl \
+            wget \
+            xz-utils \
+            zstd \
+            cpio \
+            rsync \
+            file
+
+      - name: Prepare root filesystem
+        run: |
+          sudo mkdir -p "$PREFIX"
+          sudo chown "$USER:$USER" "$PREFIX"
+
+          mkdir -p \
+            "$PREFIX/bin" \
+            "$PREFIX/sbin" \
+            "$PREFIX/usr/bin" \
+            "$PREFIX/usr/sbin" \
+            "$PREFIX/usr/lib" \
+            "$PREFIX/usr/share" \
+            "$PREFIX/etc" \
+            "$PREFIX/var" \
+            "$PREFIX/tmp" \
+            "$PREFIX/dev" \
+            "$PREFIX/proc" \
+            "$PREFIX/sys" \
+            "$PREFIX/run"
+
+      # ------------------------------------------------------------
+      # musl
+      # ------------------------------------------------------------
+
+      - name: Build musl
+        run: |
+          git clone --depth=1 https://git.musl-libc.org/git/musl "$RUNNER_TEMP/musl"
+          cd "$RUNNER_TEMP/musl"
+
+          ./configure \
+            --prefix="$PREFIX"
+
+          make -j"$JOBS"
+          make install
+
+      # ------------------------------------------------------------
+      # BusyBox
+      # ------------------------------------------------------------
+
+      - name: Build BusyBox
+        run: |
+          git clone --depth=1 https://git.busybox.net/busybox \
+            "$RUNNER_TEMP/busybox"
+
+          cd "$RUNNER_TEMP/busybox"
+
+          make defconfig
+
+          # Static BusyBox gives Vega a useful recovery shell
+          sed -i 's/# CONFIG_STATIC is not set/CONFIG_STATIC=y/' .config
+
+          make olddefconfig
+          make -j"$JOBS"
+
+          make CONFIG_PREFIX="$PREFIX" install
+
+      # ------------------------------------------------------------
+      # Bash
+      # ------------------------------------------------------------
+
+      - name: Build Bash
+        run: |
+          git clone --depth=1 https://git.savannah.gnu.org/git/bash.git \
+            "$RUNNER_TEMP/bash"
+
+          cd "$RUNNER_TEMP/bash"
+
+          ./configure \
+            --prefix=/usr \
+            --without-bash-malloc
+
+          make -j"$JOBS"
+          make DESTDIR="$PREFIX" install
+
+      # ------------------------------------------------------------
+      # iproute2
+      # ------------------------------------------------------------
+
+      - name: Build iproute2
+        run: |
+          git clone --depth=1 https://git.kernel.org/pub/scm/network/iproute2/iproute2.git \
+            "$RUNNER_TEMP/iproute2"
+
+          cd "$RUNNER_TEMP/iproute2"
+
+          ./configure
+          make -j"$JOBS"
+          make DESTDIR="$PREFIX" install
+
+      # ------------------------------------------------------------
+      # util-linux
+      # ------------------------------------------------------------
+
+      - name: Build util-linux
+        run: |
+          git clone --depth=1 https://github.com/util-linux/util-linux.git \
+            "$RUNNER_TEMP/util-linux"
+
+          cd "$RUNNER_TEMP/util-linux"
+
+          ./autogen.sh
+
+          ./configure \
+            --prefix=/usr \
+            --libdir=/usr/lib \
+            --disable-all-programs \
+            --enable-mount \
+            --enable-losetup \
+            --enable-lsblk \
+            --enable-dmesg \
+            --enable-more \
+            --enable-su \
+            --enable-login
+
+          make -j"$JOBS"
+          make DESTDIR="$PREFIX" install
+
+      # ------------------------------------------------------------
+      # shadow
+      # ------------------------------------------------------------
+
+      - name: Build shadow
+        run: |
+          git clone --depth=1 https://github.com/shadow-maint/shadow.git \
+            "$RUNNER_TEMP/shadow"
+
+          cd "$RUNNER_TEMP/shadow"
+
+          ./autogen.sh
+
+          ./configure \
+            --prefix=/usr \
+            --sysconfdir=/etc \
+            --disable-man
+
+          make -j"$JOBS"
+          make DESTDIR="$PREFIX" install
+
+      # ------------------------------------------------------------
+      # sudo
+      # ------------------------------------------------------------
+
+      - name: Build sudo
+        run: |
+          git clone --depth=1 https://github.com/sudo-project/sudo.git \
+            "$RUNNER_TEMP/sudo"
+
+          cd "$RUNNER_TEMP/sudo"
+
+          ./configure \
+            --prefix=/usr \
+            --sysconfdir=/etc \
+            --disable-nls
+
+          make -j"$JOBS"
+          make DESTDIR="$PREFIX" install
+
+      # ------------------------------------------------------------
+      # dhcpcd
+      # ------------------------------------------------------------
+
+      - name: Build dhcpcd
+        run: |
+          git clone --depth=1 https://github.com/NetworkConfiguration/dhcpcd.git \
+            "$RUNNER_TEMP/dhcpcd"
+
+          cd "$RUNNER_TEMP/dhcpcd"
+
+          ./configure \
+            --prefix=/usr \
+            --sysconfdir=/etc
+
+          make -j"$JOBS"
+          make DESTDIR="$PREFIX" install
+
+      # ------------------------------------------------------------
+      # Basic Vega filesystem
+      # ------------------------------------------------------------
+
+      - name: Create basic configuration
+        run: |
+          mkdir -p "$PREFIX/etc"
+
+          cat > "$PREFIX/etc/passwd" <<'EOF'
+          root:x:0:0:root:/root:/bin/bash
+          EOF
+
+          cat > "$PREFIX/etc/group" <<'EOF'
+          root:x:0:
+          EOF
+
+          cat > "$PREFIX/etc/hostname" <<'EOF'
+          vega
+          EOF
+
+          mkdir -p "$PREFIX/root"
+
+          cat > "$PREFIX/etc/profile" <<'EOF'
+          export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+          export HOME=/root
+          export PS1='\u@\h:\w\$ '
+          EOF
+
+      # ------------------------------------------------------------
+      # Package
+      # ------------------------------------------------------------
+
+      - name: Strip binaries
+        run: |
+          find "$PREFIX" \
+            -type f \
+            -executable \
+            -exec sh -c '
+              file "$1" | grep -q "ELF.*aarch64" &&
+              strip "$1" 2>/dev/null || true
+            ' _ {} \;
+
+      - name: Show result
+        run: |
+          echo "=== Architecture ==="
+          file "$PREFIX/bin/busybox" || true
+
+          echo
+          echo "=== Size ==="
+          du -sh "$PREFIX"
+
+          echo
+          echo "=== Binaries ==="
+          find "$PREFIX/bin" "$PREFIX/usr/bin" "$PREFIX/sbin" "$PREFIX/usr/sbin" \
+            -maxdepth 1 -type f 2>/dev/null | sort
+
+      - name: Create archive
+        run: |
+          tar \
+            -C "$PREFIX" \
+            -I 'zstd -19' \
+            -cf "$GITHUB_WORKSPACE/vega-userspace-aarch64.tar.zst" \
+            .
+
+      - name: Upload userspace
+        uses: actions/upload-artifact@v4
+        with:
+          name: vega-userspace-aarch64
+          path: vega-userspace-aarch64.tar.zst
+          compression-level: 0
+
+**Но:** я специально оставил `apk-tools` за пределами этого первого варианта. У него уже есть собственная цепочка зависимостей/сборки, и впихивать её наугад в такой workflow — хороший способ получить ебаный dependency hell.
+
+Сначала этот userspace собираем. Потом отдельным шагом добавим **apk-tools**, и получится уже нормальная основа Vega 0.5.x.
