@@ -1,1 +1,102 @@
+name: Build Linux Kernel
 
+on:
+  workflow_dispatch:
+
+env:
+  KERNEL_VERSION: "6.18.54"
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            bc \
+            bison \
+            build-essential \
+            flex \
+            gcc-aarch64-linux-gnu \
+            git \
+            libelf-dev \
+            libssl-dev \
+            pahole \
+            perl \
+            python3 \
+            rsync \
+            cpio \
+            kmod \
+            zstd
+
+      - name: Download Linux source
+        run: |
+          git clone \
+            --depth=1 \
+            --branch "v${KERNEL_VERSION}" \
+            https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git \
+            linux
+
+      - name: Configure kernel
+        working-directory: linux
+        run: |
+          make \
+            ARCH=arm64 \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            defconfig
+
+      - name: Build kernel
+        working-directory: linux
+        run: |
+          make -j"$(nproc)" \
+            ARCH=arm64 \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            Image modules
+
+      - name: Install modules
+        working-directory: linux
+        run: |
+          make \
+            ARCH=arm64 \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            INSTALL_MOD_PATH="$GITHUB_WORKSPACE/output" \
+            modules_install
+
+      - name: Prepare output
+        run: |
+          mkdir -p artifact
+
+          cp linux/arch/arm64/boot/Image \
+            artifact/Image
+
+          cp linux/System.map \
+            artifact/System.map
+
+          cp linux/.config \
+            artifact/config
+
+          cp -a output/lib \
+            artifact/lib
+
+      - name: Create archive
+        run: |
+          tar -I 'zstd -19' \
+            -cf "linux-${KERNEL_VERSION}-aarch64.tar.zst" \
+            -C artifact .
+
+      - name: Upload Image
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ env.KERNEL_VERSION }}-aarch64
+          path: |
+            artifact/Image
+            artifact/System.map
+            artifact/config
+
+      - name: Upload kernel package
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ env.KERNEL_VERSION }}-aarch64-full
+          path: linux-${{ env.KERNEL_VERSION }}-aarch64.tar.zst
