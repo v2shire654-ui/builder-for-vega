@@ -75,7 +75,7 @@ jobs:
       - name: Build Bash
         run: |
           git clone --depth=1 \
-            https://git.savannah.gnu.org/git/bash.git \
+            https://github.com/bminor/bash.git \
             "$RUNNER_TEMP/bash"
 
           cd "$RUNNER_TEMP/bash"
