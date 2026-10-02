@@ -1,2 +1,3 @@
-# linux-kernel-build
-build a Linux kernel 
+# BUILDER FOR VEGA
+builder all sorts of bullshit for vega
+
