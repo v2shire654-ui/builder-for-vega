@@ -1,4 +1,4 @@
-name: Build Linux Kernel
+name: Build Linux Kernel 6.18.54 LTS aarch64
 
 on:
   workflow_dispatch:
