@@ -12,39 +12,15 @@ jobs:
     runs-on: ubuntu-24.04-arm
 
     steps:
-      - name: Install build dependencies
+      - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            build-essential \
-            autoconf \
-            automake \
-            bison \
-            flex \
-            gettext \
-            libtool \
-            pkg-config \
-            libssl-dev \
-            libcap-dev \
-            libpam0g-dev \
-            libpcre2-dev \
-            libselinux1-dev \
-            libmount-dev \
-            libblkid-dev \
-            libuuid1 \
-            uuid-dev \
-            zlib1g-dev \
-            liblzma-dev \
-            libzstd-dev \
-            libffi-dev \
-            git \
-            curl \
-            wget \
-            xz-utils \
-            zstd \
-            cpio \
-            rsync \
-            file
+            build-essential autoconf automake bison flex gettext \
+            libtool pkg-config libssl-dev libcap-dev libpam0g-dev \
+            libpcre2-dev libselinux1-dev libmount-dev libblkid-dev \
+            libuuid1 uuid-dev zlib1g-dev liblzma-dev libzstd-dev \
+            libffi-dev git curl wget xz-utils zstd cpio rsync file
 
       - name: Prepare root filesystem
         run: |
@@ -66,10 +42,6 @@ jobs:
             "$PREFIX/root" \
             "$PREFIX/run"
 
-      # ============================================================
-      # musl
-      # ============================================================
-
       - name: Build musl
         run: |
           git clone --depth=1 \
@@ -84,10 +56,6 @@ jobs:
           make -j"$JOBS"
           make DESTDIR="$PREFIX" install
 
-      # ============================================================
-      # BusyBox
-      # ============================================================
-
       - name: Build BusyBox
         run: |
           git clone --depth=1 \
@@ -97,16 +65,10 @@ jobs:
           cd "$RUNNER_TEMP/busybox"
 
           make defconfig
-
           sed -i 's/# CONFIG_STATIC is not set/CONFIG_STATIC=y/' .config
 
           make -j"$JOBS"
-
           make CONFIG_PREFIX="$PREFIX" install
-
-      # ============================================================
-      # Bash
-      # ============================================================
 
       - name: Build Bash
         run: |
@@ -123,10 +85,6 @@ jobs:
           make -j"$JOBS"
           make DESTDIR="$PREFIX" install
 
-      # ============================================================
-      # iproute2
-      # ============================================================
-
       - name: Build iproute2
         run: |
           git clone --depth=1 \
@@ -138,10 +96,6 @@ jobs:
           ./configure
           make -j"$JOBS"
           make DESTDIR="$PREFIX" install
-
-      # ============================================================
-      # util-linux
-      # ============================================================
 
       - name: Build util-linux
         run: |
@@ -168,10 +122,6 @@ jobs:
           make -j"$JOBS"
           make DESTDIR="$PREFIX" install
 
-      # ============================================================
-      # shadow
-      # ============================================================
-
       - name: Build shadow
         run: |
           git clone --depth=1 \
@@ -190,10 +140,6 @@ jobs:
           make -j"$JOBS"
           make DESTDIR="$PREFIX" install
 
-      # ============================================================
-      # sudo
-      # ============================================================
-
       - name: Build sudo
         run: |
           git clone --depth=1 \
@@ -210,10 +156,6 @@ jobs:
           make -j"$JOBS"
           make DESTDIR="$PREFIX" install
 
-      # ============================================================
-      # dhcpcd
-      # ============================================================
-
       - name: Build dhcpcd
         run: |
           git clone --depth=1 \
@@ -229,15 +171,9 @@ jobs:
           make -j"$JOBS"
           make DESTDIR="$PREFIX" install
 
-      # ============================================================
-      # Vega configuration
-      # ============================================================
-
-      - name: Create basic configuration
+      - name: Create configuration
         run: |
-          mkdir -p \
-            "$PREFIX/etc" \
-            "$PREFIX/root"
+          mkdir -p "$PREFIX/etc" "$PREFIX/root"
 
           cat > "$PREFIX/etc/passwd" <<'EOF'
           root:x:0:0:root:/root:/bin/bash
@@ -257,10 +193,6 @@ jobs:
           export PS1='\u@\h:\w\$ '
           EOF
 
-      # ============================================================
-      # Strip
-      # ============================================================
-
       - name: Strip binaries
         run: |
           find "$PREFIX" \
@@ -271,21 +203,13 @@ jobs:
               strip "$1" 2>/dev/null || true
             ' _ {} \;
 
-      # ============================================================
-      # Show result
-      # ============================================================
-
       - name: Show result
         run: |
-          echo "=== BusyBox ==="
-          "$PREFIX/bin/busybox" --help >/dev/null || true
-
-          echo
           echo "=== Architecture ==="
           file "$PREFIX/bin/busybox" || true
 
           echo
-          echo "=== Userspace size ==="
+          echo "=== Size ==="
           du -sh "$PREFIX"
 
           echo
@@ -296,10 +220,6 @@ jobs:
             "$PREFIX/sbin" \
             "$PREFIX/usr/sbin" \
             -type f 2>/dev/null | sort
-
-      # ============================================================
-      # Archive
-      # ============================================================
 
       - name: Create archive
         run: |
@@ -315,7 +235,3 @@ jobs:
           name: vega-userspace-aarch64
           path: vega-userspace-aarch64.tar.zst
           compression-level: 0
-
-Главный фикс: убран нахуй "make olddefconfig" у BusyBox. После "make defconfig" → меняем ".config" → сразу "make".
-
-И ещё я поправил musl: теперь он ставится именно в ""$PREFIX"", а не в "/opt/vega/usr" через случайную комбинацию "--prefix="$PREFIX"" + "DESTDIR".
