@@ -65,7 +65,9 @@ jobs:
           cd "$RUNNER_TEMP/busybox"
 
           make defconfig
+
           sed -i 's/# CONFIG_STATIC is not set/CONFIG_STATIC=y/' .config
+          sed -i 's/^CONFIG_TC=y/# CONFIG_TC is not set/' .config
 
           make -j"$JOBS"
           make CONFIG_PREFIX="$PREFIX" install
